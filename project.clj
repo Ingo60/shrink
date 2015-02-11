@@ -11,7 +11,8 @@
                  [com.theoryinpractise.frege/frege "3.22.367-g2737683"]
 
                  ;; put here what is needed in addition
-                 ;;[jline/jline "1.0"]]
+                 ;;[jline/jline "1.0"]
+				 ]
 
   ;; A MUST, this is the plugin that makes all this possible
   :plugins [[lein-fregec "3.22.367-i"]]

@@ -1,0 +1,87 @@
+--- This is an undocumented module
+module de.contexo.Shrink where
+
+import Java.util.Jar
+import Java.lang.Processes (Process, ProcessBuilder)
+
+native proguard proguard.ProGuard.main :: ArrayOf RealWorld String -> IO () 
+
+main :: [String] → IO Bool
+main [jarPath@´\.jar$´] = do
+        -- find the rt.jar of the java installation
+        rtjar ← maybe 
+                    (throwIO (Undefined.new "Can't find java home."))
+                    (return . (++ "/lib/rt.jar"))
+                (System.getProperty "java.home")
+        stderr.println ("java runtime jar is apparently " ++ rtjar)
+
+        -- check if the given path exists
+        jarFile ← File.new jarPath
+        isF     ← jarFile.isFile
+        isR     ← jarFile.canRead
+        when (not isF || not isR) do
+            throwIO (Undefined.new (jarPath ++ " is not readable or not a file."))
+
+        -- open as JAR file, this should throw if not ok
+        jar     ← JarFile.new jarFile
+
+        -- find the _Main-Class_ attribute in the manifest 
+        mbman   ← jar.getManifest       -- go for the manifest
+        case mbman of
+            Nothing     = throwIO (Undefined.new (jarPath ++ " has no manifest."))
+            Just man    = do
+                attrs   ← man.getMainAttributes
+                mbmain  ← attrs.getValue AttributesName.main_class
+                case mbmain of
+                    Nothing = throwIO (Undefined.new (
+                                "Couldn't find main class in manifest."))
+                    Just main = do
+                        jar.close
+                        stderr.println ("main class is apparently " ++ main)
+                        
+                        -- write the config to a temporary file
+                        tmp     ← File.createTempFile "proguard" ".conf"
+                        tmpPath ← tmp.getPath
+                        printer ← PrintWriter.new tmp "UTF-8"
+                        let newJar = (´\.jar$´.matcher jarPath).replaceFirst ".slim.jar"
+                        mapM_ printer.println [
+                            "-basedirectory " ++ fromMaybe "." (System.getProperty "user.dir"),
+                            "-injars       " ++ jarPath,
+                            "-outjars      " ++ newJar,
+                            "-libraryjars  " ++ rtjar,
+                            "-keep public class " ++ main ++" {",
+                            "    public static void main(java.lang.String[]);",
+                            "}",
+                            "-dontobfuscate",
+                            "-dontoptimize",
+                            "-ignorewarnings",
+                            ]
+                        printer.close
+                        stderr.println ("wrote config to " ++ tmpPath)
+
+                        -- now, off to ProGuard!!!
+                        -- let cmdline = ["java", "-jar", head pg, " @" ++ tmpPath]
+                        --     pg = [ x | cp ← System.getProperty "java.class.path",
+                        --                 x ← Regex.splitted (regforce File.pathSeparator) cp,
+                        --                 x ~ ´(?i)proguard.*\.jar$´ ]
+                        -- stderr.println ("running: " ++ joined " " cmdline)
+                        -- p <- ProcessBuilder.new cmdline
+                        --         >>= _.inheritIO
+                        --         >>= _.start
+                        -- (0==) <$> p.waitFor
+                        
+                        JArray.fromList ["@" ++ tmpPath] >>= proguard
+                        return true
+    `catch` undef
+    `catch` failure where
+        undef   (ex::Undefined) = do
+            stderr.println (ex.getMessage)
+            stderr.println "Shrinking failed."
+            return false
+        failure (ex::Exception) = do
+            stderr.println (ex.display)
+            return false
+
+main _ = do
+    stderr.println ("usage: de.contexo.Shrink some.jar")
+    return false

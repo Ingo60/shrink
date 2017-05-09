@@ -4,7 +4,7 @@ module de.contexo.Shrink where
 import Java.util.Jar
 import Java.lang.Processes (Process, ProcessBuilder)
 
-native proguard proguard.ProGuard.main :: ArrayOf RealWorld String -> IO () 
+-- native proguard proguard.ProGuard.main :: ArrayOf RealWorld String -> IO () 
 
 main :: [String] → IO Bool
 main [jarPath@´\.jar$´] = do
@@ -33,9 +33,9 @@ main [jarPath@´\.jar$´] = do
                 attrs   ← man.getMainAttributes
                 mbmain  ← attrs.getValue AttributesName.main_class
                 case mbmain of
-                    Nothing = throwIO (Undefined.new (
+                    Nothing → throwIO (Undefined.new (
                                 "Couldn't find main class in manifest."))
-                    Just main = do
+                    Just main → do
                         jar.close
                         stderr.println ("main class is apparently " ++ main)
                         
@@ -43,7 +43,7 @@ main [jarPath@´\.jar$´] = do
                         tmp     ← File.createTempFile "proguard" ".conf"
                         tmpPath ← tmp.getPath
                         printer ← PrintWriter.new tmp "UTF-8"
-                        let newJar = (´\.jar$´.matcher jarPath).replaceFirst ".slim.jar"
+                        let newJar = jarPath.replaceFirst ´\.jar$´ ".slim.jar"
                         mapM_ printer.println [
                             "-basedirectory " ++ fromMaybe "." (System.getProperty "user.dir"),
                             "-injars       " ++ jarPath,
@@ -60,18 +60,19 @@ main [jarPath@´\.jar$´] = do
                         stderr.println ("wrote config to " ++ tmpPath)
 
                         -- now, off to ProGuard!!!
-                        -- let cmdline = ["java", "-jar", head pg, " @" ++ tmpPath]
-                        --     pg = [ x | cp ← System.getProperty "java.class.path",
-                        --                 x ← Regex.splitted (regforce File.pathSeparator) cp,
-                        --                 x ~ ´(?i)proguard.*\.jar$´ ]
-                        -- stderr.println ("running: " ++ joined " " cmdline)
-                        -- p <- ProcessBuilder.new cmdline
-                        --         >>= _.inheritIO
-                        --         >>= _.start
-                        -- (0==) <$> p.waitFor
-                        
-                        JArray.fromList ["@" ++ tmpPath] >>= proguard
-                        return true
+                        let cmdline = ["java", "-jar", head pg, " @" ++ tmpPath]
+                            -- pg1 = ["foo"]
+                            pg = [ x | cp ← System.getProperty "java.class.path",
+                                        x ← Regex.splitted (regforce File.pathSeparator) cp,
+                                        x ~ ´(?i)proguard.*\.jar$´ ]
+                        stderr.println ("running: " ++ joined " " cmdline)
+                        p <- ProcessBuilder.new cmdline
+                                 >>= _.inheritIO
+                                 >>= _.start
+                        (0==) <$> p.waitFor 
+
+                        -- arrayFromListST ["@" ++ tmpPath] >>= proguard
+                        -- return true
     `catch` undef
     `catch` failure where
         undef   (ex::Undefined) = do
